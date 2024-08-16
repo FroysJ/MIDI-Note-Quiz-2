@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI Note Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .panel {
+            padding: 20px;
+            border: 1px solid #ccc;
+            margin: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="panel" id="homePanel">
+    <button onclick="startQuiz()">Start Quiz</button>
+    <button onclick="endQuiz()">End Quiz and Exit</button>
+</div>
+
+<div class="panel" id="quizPanel" style="display: none;">
+    <button onclick="playSound()">Play Note</button>
+    <select id="noteNamesSelect"></select>
+    <select id="octavesSelect"></select>
+    <button onclick="submitAnswer()">Submit Answer</button>
+</div>
+
+<div class="panel" id="scorePanel" style="display: none;">
+    <label id="totalCorrectLabel">Total correct: 0</label>
+    <br>
+    <label id="totalAnsweredLabel">Total answered: 0</label>
+</div>
+
+<div class="panel" id="answerPanel" style="display: none;">
+    <label id="submittedAnswer">Your answer: </label>
+    <br>
+    <label id="correctAnswer">Correct answer: </label>
+</div>
+
+<div class="panel" id="confirmationDialog" style="display: none;">
+    <p>Are you sure you want to end the quiz and exit?</p>
+    <button onclick="confirmExit(true)">Yes</button>
+    <button onclick="confirmExit(false)">No</button>
+</div>
+
+<div class="panel" id="finishedDialog" style="display: none;">
+    <p>The quiz has finished. Please click 'End Quiz and Exit.'</p>
+</div>
+
+<script>
+    const noteNames = ["A", "A#/Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"];
+    const octaves = Array.from({length: 9}, (_, i) => i.toString());
+
+    function populateSelectOptions() {
+        const noteNamesSelect = document.getElementById('noteNamesSelect');
+        const octavesSelect = document.getElementById('octavesSelect');
+
+        noteNames.forEach(note => {
+            const option = document.createElement('option');
+            option.value = note;
+            option.text = note;
+            noteNamesSelect.add(option);
+        });
+
+        octaves.forEach(octave => {
+            const option = document.createElement('option');
+            option.value = octave;
+            option.text = octave;
+            octavesSelect.add(option);
+        });
+    }
+
+    function endQuiz() {
+        document.getElementById('finishedDialog').style.display = 'none';
+        document.getElementById('confirmationDialog').style.display = 'block';
+    }
+
+    async function confirmExit(confirm) {
+        if (confirm) {
+            fetch('/quiz/end');
+            if (window.app && window.app.closeWindow) {
+                window.app.closeWindow();
+            } else {
+                document.getElementById('correctAnswer').innerText = `meow`;
+            }
+            window.app.closeWindow();
+        } else {
+            document.getElementById('confirmationDialog').style.display = 'none';
+        }
+    }
+
+    async function startQuiz() {
+        let response = await fetch('/quiz/start');
+        if (response.ok) {
+            document.getElementById('quizPanel').style.display = 'block';
+            document.getElementById('scorePanel').style.display = 'block';
+        } else {
+            alert('Failed to start quiz');
+        }
+    }
+
+    async function playSound() {
+        await fetch('/quiz/play');
+        alert('Playing sound...');
+    }
+
+    async function submitAnswer() {
+        const noteName = document.getElementById('noteNamesSelect').value;
+        const octave = document.getElementById('octavesSelect').value;
+        if (!validNote(noteName, octave)) {
+            updateAnswerPanel("Invalid submission: note must be between A0 and C8.", "");
+        } else {
+            const noteNameEncoded = encodeURIComponent(noteName);
+            const octaveEncoded = encodeURIComponent(octave);
+            const submittedAnswer = `${noteName} ${octave}`;
+            let currNote = await fetch(`/quiz/current`);
+            if (!currNote.ok) {
+                throw new Error('Network response error');
+            }
+            let correctAnswer = await currNote.text();
+            let response = await fetch(`/quiz/submit?noteName=${noteNameEncoded}&octave=${octaveEncoded}`, {method: 'POST'});
+            let correct = await response.json();
+            if (correct) {
+                alert('Correct Answer!');
+            } else {
+                alert('Wrong Answer!');
+            }
+            updateAnswerPanel(submittedAnswer, correctAnswer);
+            await updateScore();
+        }
+    }
+
+    function validNote(noteName, octave) {
+        octave = parseInt(octave, 10);
+        return (octave !== 0 || noteName === "A" || noteName === "A#/Bb" || noteName === "B")
+            && (octave !== 8 || noteName === "C");
+    }
+
+    function updateAnswerPanel(submittedAnswer, correctAnswer) {
+        document.getElementById('submittedAnswer').innerText = `Your answer: ${submittedAnswer}`;
+        document.getElementById('correctAnswer').innerText = `Correct answer: ${correctAnswer}`;
+
+        // Show the answer panel
+        document.getElementById('answerPanel').style.display = 'block';
+    }
+
+    async function updateScore() {
+        let scoreResponse = await fetch('/quiz/score');
+        let answeredResponse = await fetch('/quiz/answered');
+        let score = await scoreResponse.json();
+        let answered = await answeredResponse.json();
+        document.getElementById('totalCorrectLabel').innerText = 'Total correct: ' + score;
+        document.getElementById('totalAnsweredLabel').innerText = 'Total answered: ' + answered;
+        if (answered === 88) {
+            document.getElementById('finishedDialog').style.display = 'block';
+        }
+    }
+
+    window.onload = populateSelectOptions;
+</script>
+
+</body>
+</html>
